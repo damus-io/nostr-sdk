@@ -317,6 +317,7 @@ impl ToBech32 for EventId {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Nip19Event {
     pub event_id: EventId,
+    pub kind: Option<Kind>,
     pub author: Option<XOnlyPublicKey>,
     pub relays: Vec<String>,
 }
@@ -330,6 +331,7 @@ impl Nip19Event {
         Self {
             event_id,
             author: None,
+            kind: None,
             relays: relays.into_iter().map(|u| u.into()).collect(),
         }
     }
@@ -337,6 +339,7 @@ impl Nip19Event {
     fn from_bech32_data(mut data: Vec<u8>) -> Result<Self, Error> {
         let mut event_id: Option<EventId> = None;
         let mut author: Option<XOnlyPublicKey> = None;
+        let mut kind: Option<Kind> = None;
         let mut relays: Vec<String> = Vec::new();
 
         while !data.is_empty() {
@@ -359,6 +362,19 @@ impl Nip19Event {
                         author = Some(XOnlyPublicKey::from_slice(bytes)?);
                     }
                 }
+                // nip19: "for nevent, optionally, the 32-bit unsigned
+                // integer of the kind, big-endian"
+                KIND => {
+                    if kind.is_none() {
+                        let bytes: [u8; 4] = match bytes.try_into() {
+                            Ok(bytes) => bytes,
+                            Err(_) => return Err(Error::TryFromSlice),
+                        };
+                        // we only have From<u64> for Kind
+                        let u64_kind = u32::from_be_bytes(bytes) as u64;
+                        kind = Some(u64_kind.into());
+                    }
+                }
                 RELAY => {
                     relays.push(String::from_utf8(bytes.to_vec())?);
                 }
@@ -371,6 +387,7 @@ impl Nip19Event {
         Ok(Self {
             event_id: event_id.ok_or_else(|| Error::FieldMissing("event id".to_string()))?,
             author,
+            kind,
             relays,
         })
     }
